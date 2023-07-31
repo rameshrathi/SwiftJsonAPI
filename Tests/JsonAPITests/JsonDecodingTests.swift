@@ -13,7 +13,7 @@ final class JsonDecodingTests: XCTestCase {
         let documents: [Document<Article, ArticleRelation>] = try decoder.decodeArray(jsonData)
         XCTAssertEqual(documents.count, 1)
 
-        let comments: [Comment] = try documents[0].relationshipFor(key: "comments")
+        let comments: [Relationship<Comment>] = try documents[0].relationshipFor(key: "comments")
         XCTAssertEqual(comments.count, 2)
     }
 

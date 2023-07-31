@@ -18,12 +18,15 @@ public struct Identifier: Codable, Hashable, CustomStringConvertible {
     }
 }
 
-public protocol DocumentProtocol {
+public protocol IdentifierProtocol {
     var id: Identifier { get }
 }
 
 /// Document represent any resource containing information about any object
-public struct Document<A: Decodable, R: Decodable>: DocumentProtocol {
+public struct Document<A: Decodable, R: Decodable>: IdentifierProtocol, Equatable {
+    public static func == (lhs: Document<A, R>, rhs: Document<A, R>) -> Bool {
+        lhs.id == rhs.id
+    }
 
     // Unique Identifier Of any document
     public let id: Identifier
@@ -32,29 +35,32 @@ public struct Document<A: Decodable, R: Decodable>: DocumentProtocol {
     public let attributes: A
 
     // Relationships of any document
-    public let relationships: [String: [Decodable]]
+    public let relationships: [String: [RelationshipObject]]
 
     public init(
-        id: Identifier, attributes: A, relationships: [String: [Decodable]]
+        id: Identifier, attributes: A, relationships: [String: [RelationshipObject]]
     ) {
         self.id = id
         self.attributes = attributes
         self.relationships = relationships
     }
 
-    public func relationshipFor<T>(key: String) throws -> T {
-        if let items = relationships[key] as? T {
-            return items
+    public func relationshipFor<T: Decodable>(key: String) throws -> [Relationship<T>] {
+        if let objects = relationships[key]  {
+            return objects.map {
+                Relationship<T>.init(id: $0.id, attributes: $0.attributes as! T)
+            }
         }
         throw DocumentError.emptyRelationship
     }
 }
 
-public struct Relationships<RelationshipsType> {
+public struct Relationship<AttributesType: Decodable> {
+    public let id: Identifier
+    public let attributes: AttributesType
+}
 
-    private var _container: [String: Decodable]
-
-    public init(_container: [String : Decodable]) {
-        self._container = _container
-    }
+public struct RelationshipObject {
+    public let id: Identifier
+    public let attributes: Decodable
 }

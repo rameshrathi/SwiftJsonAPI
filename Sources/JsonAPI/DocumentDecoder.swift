@@ -30,9 +30,6 @@ struct UndecodedObject: Decodable {
     let attributesDecoder: Decoder
     let relationshipsDecoder: Decoder
 
-    let meta: Meta?
-    let links: [String: Link]
-
     enum CodingKeys: CodingKey {
         case id
         case type
@@ -51,9 +48,6 @@ struct UndecodedObject: Decodable {
 
         self.attributesDecoder = try container.superDecoder(forKey: .attributes)
         self.relationshipsDecoder = try container.superDecoder(forKey: .relationships)
-
-        self.meta = try container.decodeIfPresent(Meta.self, forKey: .meta)
-        self.links = try container.decode([String : Link].self, forKey: .links)
     }
 }
 
@@ -100,8 +94,6 @@ public struct DocumentDecoder<AttributesType: Decodable> {
     struct TopLevelBox: Decodable {
         let data: [UndecodedObject]
         let included: [UndecodedObject]?
-        let meta: Meta?
-        let links: [String: Link]?
     }
 
     private var jsonDecoder: JSONDecoder {
@@ -131,8 +123,6 @@ public struct DocumentDecoder<AttributesType: Decodable> {
             )
         }
     }
-
-
 
     public func decodeArray<RelationshipsType>(_ data: Data) throws -> [Document<AttributesType, RelationshipsType>] {
 
@@ -172,12 +162,12 @@ public struct DocumentDecoder<AttributesType: Decodable> {
             }
 
             // Combining
-            var decodedRelationships = [String: [Decodable]]()
+            var decodedRelationships = [String: [RelationshipObject]]()
             for (key, value) in object.relationships {
-                var items = [Decodable]()
+                var items = [RelationshipObject]()
                 for id in value.data {
                     if let object = state.decodedObjects[id] {
-                        items.append(object.attributes)
+                        items.append(.init(id: id, attributes: object.attributes))
                     }
                 }
                 decodedRelationships[key] = items
