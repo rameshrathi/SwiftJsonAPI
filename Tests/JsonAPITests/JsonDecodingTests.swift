@@ -10,11 +10,14 @@ final class JsonDecodingTests: XCTestCase {
             ["people": Person.self, "comments": Comment.self, "articles": Article.self]
         )
 
-        let documents: [Document<Article, ArticleRelation>] = try decoder.decodeArray(jsonData)
-        XCTAssertEqual(documents.count, 1)
+        let documents: Document<Article> = try decoder.decodeArray(jsonData)
+        XCTAssertEqual(documents.primary.count, 1)
 
-        let comments: [Relationship<Comment>] = try documents[0].relationshipFor(key: "comments")
+        let comments = documents.primary[0].relationship(for: "comments")
         XCTAssertEqual(comments.count, 2)
+
+        let comment: DocumentObject<Comment> = try documents.relationships(for: comments[0])
+        XCTAssertEqual(comment.attributes.body, "First!")
     }
 
     func testJsonWithError() throws {
@@ -23,7 +26,7 @@ final class JsonDecodingTests: XCTestCase {
             ["articles": Article.self]
         )
         do {
-            let _: [Document<Article, ArticleRelation>] = try decoder.decodeArray(jsonData)
+            let _: Document<Article> = try decoder.decodeArray(jsonData)
         } catch {
             XCTAssert(error is DocumentError)
         }

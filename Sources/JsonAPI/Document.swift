@@ -7,6 +7,11 @@
 
 import Foundation
 
+public protocol IdentifierProtocol {
+    var id: Identifier { get }
+}
+
+/// Representing any resource in document with type and Id
 public struct Identifier: Codable, Hashable, CustomStringConvertible {
 
     public let id: String
@@ -18,49 +23,35 @@ public struct Identifier: Codable, Hashable, CustomStringConvertible {
     }
 }
 
-public protocol IdentifierProtocol {
-    var id: Identifier { get }
+/// Document object mapped with attributes type
+public struct DocumentObject<AttributesType: Decodable>: IdentifierProtocol {
+    public let id: Identifier
+    public let attributes: AttributesType
+    public let relationships: [String: [Identifier]]
+
+    public func relationship(for key: String) -> [Identifier] {
+        relationships[key] ?? []
+    }
 }
 
 /// Document represent any resource containing information about any object
-public struct Document<A: Decodable, R: Decodable>: IdentifierProtocol, Equatable {
-    public static func == (lhs: Document<A, R>, rhs: Document<A, R>) -> Bool {
-        lhs.id == rhs.id
+public struct Document<AttributesType: Decodable> {
+
+    public let primary: [DocumentObject<AttributesType>]
+    private let included: [Identifier: DocumentDecoder<AttributesType>.DecodedObject]
+
+    public init(decodedObjects: [DocumentObject<AttributesType>], includedObjects: [Identifier: DocumentDecoder<AttributesType>.DecodedObject]) {
+        self.primary = decodedObjects
+        self.included = includedObjects
     }
 
-    // Unique Identifier Of any document
-    public let id: Identifier
-
-    // Attributes of any document
-    public let attributes: A
-
-    // Relationships of any document
-    public let relationships: [String: [RelationshipObject]]
-
-    public init(
-        id: Identifier, attributes: A, relationships: [String: [RelationshipObject]]
-    ) {
-        self.id = id
-        self.attributes = attributes
-        self.relationships = relationships
-    }
-
-    public func relationshipFor<T: Decodable>(key: String) throws -> [Relationship<T>] {
-        if let objects = relationships[key]  {
-            return objects.map {
-                Relationship<T>.init(id: $0.id, attributes: $0.attributes as! T)
-            }
+    public func relationships<T: Decodable>(for id: Identifier) throws -> DocumentObject<T> {
+        guard let object = included[id] else {
+            throw DocumentError.emptyRelationship
         }
-        throw DocumentError.emptyRelationship
+        guard let attributes = object.attributes as? T else {
+            throw DocumentError.typeNotMached
+        }
+        return DocumentObject<T>(id: object.id, attributes: attributes, relationships: object.relationships.mapValues { $0.data })
     }
-}
-
-public struct Relationship<AttributesType: Decodable> {
-    public let id: Identifier
-    public let attributes: AttributesType
-}
-
-public struct RelationshipObject {
-    public let id: Identifier
-    public let attributes: Decodable
 }

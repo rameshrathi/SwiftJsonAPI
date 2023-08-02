@@ -21,64 +21,11 @@ public enum DocumentError: Error {
     case errorData(ErrorBox)
     case incompleteTypesMapping
     case emptyRelationship
-}
-
-struct UndecodedObject: Decodable {
-
-    let id: Identifier
-
-    let attributesDecoder: Decoder
-    let relationshipsDecoder: Decoder
-
-    enum CodingKeys: CodingKey {
-        case id
-        case type
-        case meta
-        case links
-        case attributes
-        case relationships
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-
-        let id = try container.decode(String.self, forKey: .id)
-        let type = try container.decode(String.self, forKey: .type)
-        self.id = Identifier(id: id, type: type)
-
-        self.attributesDecoder = try container.superDecoder(forKey: .attributes)
-        self.relationshipsDecoder = try container.superDecoder(forKey: .relationships)
-    }
+    case typeNotMached
 }
 
 /// Document Decoder for decoding any JsonAPI reponse format 2.1
 public struct DocumentDecoder<AttributesType: Decodable> {
-
-    struct DecodedObject {
-        let id: Identifier
-        let attributes: Decodable
-        let relationships: [String: RelationshipsMapping]
-    }
-
-    struct RelationshipsMapping: Decodable {
-
-        let data: [Identifier]
-
-        enum CodingKeys: CodingKey {
-            case data
-        }
-
-        init(from decoder: Decoder) throws {
-            let container: KeyedDecodingContainer<CodingKeys> = try decoder.container(keyedBy: CodingKeys.self)
-            if let links = try? container.decode([Identifier].self, forKey: CodingKeys.data) {
-                data = links
-            }
-            else {
-                let link  = try container.decode(Identifier.self, forKey: CodingKeys.data)
-                data = [link]
-            }
-        }
-    }
 
     struct DecodingState {
         var undecodedObjects: [Identifier: UndecodedObject] = [:]
@@ -124,7 +71,7 @@ public struct DocumentDecoder<AttributesType: Decodable> {
         }
     }
 
-    public func decodeArray<RelationshipsType>(_ data: Data) throws -> [Document<AttributesType, RelationshipsType>] {
+    public func decodeArray(_ data: Data) throws -> Document<AttributesType> {
 
         // Check if any error is received
         if let errors = try? jsonDecoder.decode(DocumentError.ErrorBox.self, from: data) {
@@ -152,8 +99,7 @@ public struct DocumentDecoder<AttributesType: Decodable> {
         // We can continue processing rest of the items
         assert(state.undecodedObjects.isEmpty)
 
-
-        var documents: [Document<AttributesType, RelationshipsType>] = []
+        var decodedObjects: [DocumentObject<AttributesType>] = []
 
         for identifier in box.data.map({ $0.id }) {
             guard let object = state.decodedObjects[identifier] else {
@@ -161,25 +107,75 @@ public struct DocumentDecoder<AttributesType: Decodable> {
                 continue
             }
 
-            // Combining
-            var decodedRelationships = [String: [RelationshipObject]]()
-            for (key, value) in object.relationships {
-                var items = [RelationshipObject]()
-                for id in value.data {
-                    if let object = state.decodedObjects[id] {
-                        items.append(.init(id: id, attributes: object.attributes))
-                    }
-                }
-                decodedRelationships[key] = items
-            }
-            documents.append(Document(
-                id: object.id,
-                attributes: object.attributes as! AttributesType,
-                relationships: decodedRelationships
-            ))
+            // Relationship
+            let relationshipsMap = object.relationships.mapValues { $0.data }
+            decodedObjects.append(
+                .init(id: object.id, attributes: object.attributes as! AttributesType, relationships: relationshipsMap)
+            )
         }
 
         // Success parsing
-        return documents
+        return Document<AttributesType>(
+            decodedObjects: decodedObjects,
+            includedObjects: state.decodedObjects.mapValues {
+                .init(id: $0.id, attributes: $0.attributes, relationships: $0.relationships)
+            }
+        )
+    }
+}
+
+extension DocumentDecoder {
+    struct UndecodedObject: Decodable {
+
+        let id: Identifier
+
+        let attributesDecoder: Decoder
+        let relationshipsDecoder: Decoder
+
+        enum CodingKeys: CodingKey {
+            case id
+            case type
+            case meta
+            case links
+            case attributes
+            case relationships
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+
+            let id = try container.decode(String.self, forKey: .id)
+            let type = try container.decode(String.self, forKey: .type)
+            self.id = Identifier(id: id, type: type)
+
+            self.attributesDecoder = try container.superDecoder(forKey: .attributes)
+            self.relationshipsDecoder = try container.superDecoder(forKey: .relationships)
+        }
+    }
+
+    public struct RelationshipsMapping: Decodable {
+
+        public let data: [Identifier]
+
+        public enum CodingKeys: CodingKey {
+            case data
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container: KeyedDecodingContainer<CodingKeys> = try decoder.container(keyedBy: CodingKeys.self)
+            if let links = try? container.decode([Identifier].self, forKey: CodingKeys.data) {
+                data = links
+            }
+            else {
+                let link  = try container.decode(Identifier.self, forKey: CodingKeys.data)
+                data = [link]
+            }
+        }
+    }
+
+    public struct DecodedObject {
+        public let id: Identifier
+        public let attributes: Decodable
+        public let relationships: [String: RelationshipsMapping]
     }
 }
